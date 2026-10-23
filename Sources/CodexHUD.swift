@@ -70,8 +70,15 @@ final class HUDView: NSView {
     override func mouseExited(with event: NSEvent) { hovered = false; needsDisplay = true }
     override func resetCursorRects() { addCursorRect(bounds, cursor: .openHand) }
 
-    static func headerHeight(width: CGFloat, hasReset: Bool) -> CGFloat {
-        hasReset && width < 526 ? 50 : 36
+    static func resetWidth(_ label: String?) -> CGFloat {
+        guard let label = label else { return 0 }
+        return ceil((label as NSString).size(withAttributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .medium)]).width)
+    }
+    static func preferredWidth(resetLabel: String?) -> CGFloat {
+        380 + (resetLabel == nil ? 0 : resetWidth(resetLabel) + 4)
+    }
+    static func headerHeight(width: CGFloat, resetLabel: String?) -> CGFloat {
+        resetLabel != nil && width < preferredWidth(resetLabel: resetLabel) ? 50 : 36
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -82,9 +89,9 @@ final class HUDView: NSView {
         outline.lineWidth = 1
         outline.stroke()
         let hasReset = presentation.resetLabel != nil
-        let inlineReset = hasReset && bounds.width >= 526
-        let shift: CGFloat = inlineReset ? 116 : 0
-        let top = bounds.height - Self.headerHeight(width: bounds.width, hasReset: hasReset)
+        let inlineReset = hasReset && bounds.width >= Self.preferredWidth(resetLabel: presentation.resetLabel)
+        let shift: CGFloat = inlineReset ? Self.resetWidth(presentation.resetLabel) + 4 : 0
+        let top = bounds.height - Self.headerHeight(width: bounds.width, resetLabel: presentation.resetLabel)
         let row = bounds.height - 36
         func text(_ value: String, x: CGFloat, y: CGFloat, width: CGFloat, size: CGFloat = 11,
                   color: NSColor = Palette.text, weight: NSFont.Weight = .medium, digits: Bool = false) {
@@ -102,25 +109,25 @@ final class HUDView: NSView {
             }
         }
         NSColor(white: 1, alpha: 0.055).setFill()
-        NSBezierPath(roundedRect: CGRect(x: 27, y: row + 8, width: 45, height: 21), xRadius: 5, yRadius: 5).fill()
-        text(presentation.source, x: 34, y: row + 10, width: 35, size: 10,
+        NSBezierPath(roundedRect: CGRect(x: 27, y: row + 8, width: 39, height: 21), xRadius: 5, yRadius: 5).fill()
+        text(presentation.source, x: 32, y: row + 10, width: 33, size: 10,
              color: presentation.source == "失效" ? Palette.yellow : Palette.muted)
         Palette.border.setFill()
-        NSRect(x: 82, y: row + 11, width: 1, height: 15).fill()
+        NSRect(x: 76, y: row + 11, width: 1, height: 15).fill()
         func percent(_ value: Int?) -> String { value.map { "\($0)%" } ?? "—" }
-        text("5h", x: 96, y: row + 11, width: 19, color: Palette.muted)
-        text(percent(presentation.fiveHour), x: 119, y: row + 9.5, width: 49, size: 13,
+        text("5h", x: 88, y: row + 11, width: 19, color: Palette.muted)
+        text(percent(presentation.fiveHour), x: 108, y: row + 9.5, width: 43, size: 13,
              color: Palette.quota(presentation.fiveHour), weight: .semibold, digits: true)
         if let reset = presentation.resetLabel {
-            text(reset, x: inlineReset ? 168 : 96, y: inlineReset ? row + 11 : top + 1,
-                 width: 112, size: 10, color: Palette.muted, digits: true)
+            text(reset, x: inlineReset ? 154 : 88, y: inlineReset ? row + 11 : top + 1,
+                 width: Self.resetWidth(reset) + 1, size: 10, color: Palette.muted, digits: true)
         }
-        text("周", x: 180 + shift, y: row + 11, width: 17, color: Palette.muted)
-        text(percent(presentation.weekly), x: 201 + shift, y: row + 9.5, width: 49, size: 13,
+        text("周", x: 165 + shift, y: row + 11, width: 17, color: Palette.muted)
+        text(percent(presentation.weekly), x: 184 + shift, y: row + 9.5, width: 49, size: 13,
              color: Palette.quota(presentation.weekly), weight: .semibold, digits: true)
-        text("上下文", x: 255 + shift, y: row + 11, width: 38, color: Palette.muted)
+        text("上下文", x: 237 + shift, y: row + 11, width: 38, color: Palette.muted)
         let context = presentation.context.map { "≈\($0)%" } ?? "—"
-        text(context, x: 297 + shift, y: row + 9.5, width: 64, size: 13, weight: .semibold, digits: true)
+        text(context, x: 279 + shift, y: row + 9.5, width: 64, size: 13, weight: .semibold, digits: true)
         let chevron = NSBezierPath()
         let cy = row + 18
         let direction: CGFloat = presentation.expanded ? -1 : 1
@@ -189,7 +196,7 @@ final class Controller: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
-        panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 410, height: 36),
+        panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 380, height: 36),
                         styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.level = .floating
         panel.backgroundColor = .clear
@@ -255,10 +262,10 @@ final class Controller: NSObject, NSApplicationDelegate {
 
     private func place() {
         guard let host = host else { return }
-        let hasReset = resetLabel() != nil
-        let preferredWidth: CGFloat = hasReset ? 526 : 410
+        let reset = resetLabel()
+        let preferredWidth = HUDView.preferredWidth(resetLabel: reset)
         let actualWidth = min(preferredWidth, host.width - 16)
-        let height = HUDView.headerHeight(width: actualWidth, hasReset: hasReset) + (expanded ? 60 : 0)
+        let height = HUDView.headerHeight(width: actualWidth, resetLabel: reset) + (expanded ? 60 : 0)
         let frame = HUDGeometry.frame(host: host, width: preferredWidth, height: height, position: position)
         if panel.frame != frame { panel.setFrame(frame, display: true) }
         render(width: frame.width)
@@ -481,7 +488,7 @@ private func renderPreview(at path: String) {
     let directory = URL(fileURLWithPath: path)
     try! FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     for (name, expanded, five, week, context) in [("compact", false, 77, 96, 7), ("expanded", true, 77, 96, 7), ("low-quota", false, 12, 38, 89), ("narrow", false, 77, 96, 7)] {
-        let size = NSSize(width: name == "narrow" ? 414 : 526, height: name == "narrow" ? 50 : expanded ? 96 : 36)
+        let size = NSSize(width: name == "narrow" ? 414 : HUDView.preferredWidth(resetLabel: "14:30 重置"), height: name == "narrow" ? 50 : expanded ? 96 : 36)
         let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: .borderless, backing: .buffered, defer: false)
         let view = HUDView(frame: NSRect(origin: .zero, size: size))
         window.contentView = view

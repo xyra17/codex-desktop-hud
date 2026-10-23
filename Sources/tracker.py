@@ -348,7 +348,7 @@ def appserver_quota(binary: str, timeout: float = 12.0) -> dict:
     try:
         deadline = time.monotonic() + timeout
         send({'id': 1, 'method': 'initialize', 'params': {
-            'clientInfo': {'name': 'codex_desktop_hud', 'title': 'Codex Desktop HUD', 'version': '0.3.2'}}})
+            'clientInfo': {'name': 'codex_desktop_hud', 'title': 'Codex Desktop HUD', 'version': '0.3.3'}}})
         init = receive(deadline, {1}).get(1)
         if not init or 'error' in init:
             raise RuntimeError('app-server initialize failed')
