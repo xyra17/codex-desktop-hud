@@ -29,6 +29,7 @@ struct HUDPresentation: Equatable {
     var cache: String
     var plan: String
     var expanded: Bool
+    var resetLabel: String? = nil
 }
 
 final class HUDView: NSView {
@@ -69,6 +70,10 @@ final class HUDView: NSView {
     override func mouseExited(with event: NSEvent) { hovered = false; needsDisplay = true }
     override func resetCursorRects() { addCursorRect(bounds, cursor: .openHand) }
 
+    static func headerHeight(width: CGFloat, hasReset: Bool) -> CGFloat {
+        hasReset && width < 526 ? 50 : 36
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         let outline = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 10.5, yRadius: 10.5)
         (hovered ? Palette.hover : Palette.background).setFill()
@@ -76,7 +81,11 @@ final class HUDView: NSView {
         Palette.border.setStroke()
         outline.lineWidth = 1
         outline.stroke()
-        let top = bounds.height - 36
+        let hasReset = presentation.resetLabel != nil
+        let inlineReset = hasReset && bounds.width >= 526
+        let shift: CGFloat = inlineReset ? 116 : 0
+        let top = bounds.height - Self.headerHeight(width: bounds.width, hasReset: hasReset)
+        let row = bounds.height - 36
         func text(_ value: String, x: CGFloat, y: CGFloat, width: CGFloat, size: CGFloat = 11,
                   color: NSColor = Palette.text, weight: NSFont.Weight = .medium, digits: Bool = false) {
             let paragraph = NSMutableParagraphStyle()
@@ -89,27 +98,31 @@ final class HUDView: NSView {
         Palette.muted.withAlphaComponent(hovered ? 0.9 : 0.5).setFill()
         for x: CGFloat in [13, 17] {
             for y: CGFloat in [14, 18, 22] {
-                NSBezierPath(ovalIn: CGRect(x: x, y: top + y, width: 1.6, height: 1.6)).fill()
+                NSBezierPath(ovalIn: CGRect(x: x, y: row + y, width: 1.6, height: 1.6)).fill()
             }
         }
         NSColor(white: 1, alpha: 0.055).setFill()
-        NSBezierPath(roundedRect: CGRect(x: 27, y: top + 8, width: 45, height: 21), xRadius: 5, yRadius: 5).fill()
-        text(presentation.source, x: 34, y: top + 10, width: 35, size: 10,
+        NSBezierPath(roundedRect: CGRect(x: 27, y: row + 8, width: 45, height: 21), xRadius: 5, yRadius: 5).fill()
+        text(presentation.source, x: 34, y: row + 10, width: 35, size: 10,
              color: presentation.source == "失效" ? Palette.yellow : Palette.muted)
         Palette.border.setFill()
-        NSRect(x: 82, y: top + 11, width: 1, height: 15).fill()
+        NSRect(x: 82, y: row + 11, width: 1, height: 15).fill()
         func percent(_ value: Int?) -> String { value.map { "\($0)%" } ?? "—" }
-        text("5h", x: 96, y: top + 11, width: 19, color: Palette.muted)
-        text(percent(presentation.fiveHour), x: 119, y: top + 9.5, width: 49, size: 13,
+        text("5h", x: 96, y: row + 11, width: 19, color: Palette.muted)
+        text(percent(presentation.fiveHour), x: 119, y: row + 9.5, width: 49, size: 13,
              color: Palette.quota(presentation.fiveHour), weight: .semibold, digits: true)
-        text("周", x: 180, y: top + 11, width: 17, color: Palette.muted)
-        text(percent(presentation.weekly), x: 201, y: top + 9.5, width: 49, size: 13,
+        if let reset = presentation.resetLabel {
+            text(reset, x: inlineReset ? 168 : 96, y: inlineReset ? row + 11 : top + 1,
+                 width: 112, size: 10, color: Palette.muted, digits: true)
+        }
+        text("周", x: 180 + shift, y: row + 11, width: 17, color: Palette.muted)
+        text(percent(presentation.weekly), x: 201 + shift, y: row + 9.5, width: 49, size: 13,
              color: Palette.quota(presentation.weekly), weight: .semibold, digits: true)
-        text("上下文", x: 255, y: top + 11, width: 38, color: Palette.muted)
+        text("上下文", x: 255 + shift, y: row + 11, width: 38, color: Palette.muted)
         let context = presentation.context.map { "≈\($0)%" } ?? "—"
-        text(context, x: 297, y: top + 9.5, width: 64, size: 13, weight: .semibold, digits: true)
+        text(context, x: 297 + shift, y: row + 9.5, width: 64, size: 13, weight: .semibold, digits: true)
         let chevron = NSBezierPath()
-        let cy = top + 18
+        let cy = row + 18
         let direction: CGFloat = presentation.expanded ? -1 : 1
         chevron.move(to: CGPoint(x: bounds.width - 23, y: cy + direction * 2))
         chevron.line(to: CGPoint(x: bounds.width - 19, y: cy - direction * 2))
@@ -242,7 +255,11 @@ final class Controller: NSObject, NSApplicationDelegate {
 
     private func place() {
         guard let host = host else { return }
-        let frame = HUDGeometry.frame(host: host, width: 410, height: expanded ? 96 : 36, position: position)
+        let hasReset = resetLabel() != nil
+        let preferredWidth: CGFloat = hasReset ? 526 : 410
+        let actualWidth = min(preferredWidth, host.width - 16)
+        let height = HUDView.headerHeight(width: actualWidth, hasReset: hasReset) + (expanded ? 60 : 0)
+        let frame = HUDGeometry.frame(host: host, width: preferredWidth, height: height, position: position)
         if panel.frame != frame { panel.setFrame(frame, display: true) }
         render(width: frame.width)
     }
@@ -421,6 +438,9 @@ final class Controller: NSObject, NSApplicationDelegate {
             default: return raw.capitalized
         }
     }
+    private func resetLabel() -> String? {
+        HUDTime.resetLabel(timestamp: (snapshot["five_hour_resets_at"] as? NSNumber)?.doubleValue)
+    }
     private func render(width: CGFloat) {
         guard bar != nil else { return }
         let source = snapshot["source"] as? String ?? ""
@@ -434,8 +454,8 @@ final class Controller: NSObject, NSApplicationDelegate {
         }
         let presentation = HUDPresentation(source: label, fiveHour: value("five_hour"), weekly: value("weekly"),
                                            context: value("context_percent"), turns: plain("turns"), steps: plain("steps"),
-                                           cache: value("cache_percent").map { "\($0)%" } ?? "—", plan: prettyPlan(), expanded: expanded)
-        let tooltip = "第 \(plain("turns")) 轮 · \(plain("steps")) 工具步 · 上下文 ≈\(plain("context_percent"))% · 累计缓存 \(plain("cache_percent"))% · \(prettyPlan())\n5h 剩余 \(plain("five_hour"))% · 周剩余 \(plain("weekly"))%\n拖动调整位置 · 点击展开/收起 · 右键设置\n会话：\(label)（\(source)）｜额度：\(snapshot["quota_source"] ?? "--")"
+                                           cache: value("cache_percent").map { "\($0)%" } ?? "—", plan: prettyPlan(), expanded: expanded, resetLabel: resetLabel())
+        let tooltip = "第 \(plain("turns")) 轮 · \(plain("steps")) 工具步 · 上下文 ≈\(plain("context_percent"))% · 累计缓存 \(plain("cache_percent"))% · \(prettyPlan())\n5h 剩余 \(plain("five_hour"))% · \(resetLabel() ?? "重置时间不可用") · 周剩余 \(plain("weekly"))%\n拖动调整位置 · 点击展开/收起 · 右键设置\n会话：\(label)（\(source)）｜额度：\(snapshot["quota_source"] ?? "--")"
         bar.update(presentation, tooltip: tooltip)
     }
 
@@ -460,13 +480,13 @@ struct HUDApplication {
 private func renderPreview(at path: String) {
     let directory = URL(fileURLWithPath: path)
     try! FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    for (name, expanded, five, week, context) in [("compact", false, 77, 96, 7), ("expanded", true, 77, 96, 7), ("low-quota", false, 12, 38, 89)] {
-        let size = NSSize(width: 410, height: expanded ? 96 : 36)
+    for (name, expanded, five, week, context) in [("compact", false, 77, 96, 7), ("expanded", true, 77, 96, 7), ("low-quota", false, 12, 38, 89), ("narrow", false, 77, 96, 7)] {
+        let size = NSSize(width: name == "narrow" ? 414 : 526, height: name == "narrow" ? 50 : expanded ? 96 : 36)
         let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: .borderless, backing: .buffered, defer: false)
         let view = HUDView(frame: NSRect(origin: .zero, size: size))
         window.contentView = view
         view.update(HUDPresentation(source: "预览", fiveHour: five, weekly: week, context: context,
-                                    turns: "35", steps: "1,203", cache: "99%", plan: "Plus", expanded: expanded), tooltip: "示例数据")
+                                    turns: "35", steps: "1,203", cache: "99%", plan: "Plus", expanded: expanded, resetLabel: "14:30 重置"), tooltip: "示例数据")
         window.layoutIfNeeded()
         let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width * 2), pixelsHigh: Int(size.height * 2), bitsPerSample: 8,
                                   samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!

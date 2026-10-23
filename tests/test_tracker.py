@@ -4,6 +4,7 @@ import sqlite3
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -77,6 +78,37 @@ class TestParser(unittest.TestCase):
             'codex': {'primary': {'usedPercent': 40, 'windowDurationMins': 300},
                       'secondary': {'usedPercent': 25, 'windowDurationMins': 10080}}}}
         self.assertEqual(tracker.classify_limits(r), {'five_hour': 60, 'weekly': 75})
+
+    def test_five_hour_reset_uses_matching_bucket(self):
+        reset = 1792734827
+        rate = {'rateLimitsByLimitId': {
+            'other': {'primary': {'usedPercent': 2, 'windowDurationMins': 300, 'resetsAt': reset + 99}},
+            'codex': {'primary': {'usedPercent': 11, 'windowDurationMins': 10080, 'resetsAt': reset + 500},
+                      'secondary': {'usedPercent': 73, 'windowDurationMins': 300, 'resetsAt': reset}}}}
+        parsed = tracker.classify_limits(rate)
+        self.assertEqual(parsed['five_hour_resets_at'], reset)
+        self.assertEqual(parsed['five_hour'], 27)
+        self.assertEqual(parsed['weekly'], 89)
+        snake = {'primary': {'used_percent': 73, 'window_minutes': 300, 'resets_at': reset}}
+        self.assertEqual(tracker.classify_limits(snake)['five_hour_resets_at'], reset)
+
+    def test_invalid_and_missing_reset_are_not_invented(self):
+        for value in [None, False, 'invalid', -1, 0, 1792734827000]:
+            limits = {'primary': {'usedPercent': 73, 'windowDurationMins': 300, 'resetsAt': value}}
+            self.assertNotIn('five_hour_resets_at', tracker.classify_limits(limits))
+
+    def test_snapshot_preserves_reset_from_api_and_recent_log(self):
+        reset = 1792734827
+        with patch.object(tracker, 'selected_session', return_value=(None, 'none')), patch.object(
+                tracker, 'read_cache', return_value={'ok': True, 'fetched_at': time.time(),
+                                                   'five_hour': 27, 'five_hour_resets_at': reset}):
+            self.assertEqual(tracker.snapshot()['five_hour_resets_at'], reset)
+        with patch.object(tracker, 'selected_session', return_value=(Path('unused'), 'desktop')), patch.object(
+                tracker, 'read_cache', return_value={}), patch.object(tracker, 'parse_session', return_value={
+                    'local_limits_timestamp': time.time(), 'local_limits': {'five_hour': 27, 'five_hour_resets_at': reset}}):
+            snapshot = tracker.snapshot()
+            self.assertEqual(snapshot['five_hour_resets_at'], reset)
+            self.assertEqual(snapshot['quota_source'], 'recent-session-log')
 
     def test_desktop_preferred_over_more_recent_cli(self):
         with tempfile.TemporaryDirectory() as d:
@@ -170,7 +202,7 @@ for line in sys.stdin:
     elif ident == 2:
         reply = {'id':2, 'result':{'account':{'type':'chatgpt','planType':'plus'}}}
     elif ident == 3:
-        reply = {'id':3, 'result':{'rateLimits':{'primary':{'usedPercent':20,'windowDurationMins':300},'secondary':{'usedPercent':60,'windowDurationMins':10080}}}}
+        reply = {'id':3, 'result':{'rateLimits':{'primary':{'usedPercent':20,'windowDurationMins':300,'resetsAt':1792734827},'secondary':{'usedPercent':60,'windowDurationMins':10080}}}}
     else:
         continue
     print(json.dumps(reply), flush=True)
@@ -182,3 +214,4 @@ for line in sys.stdin:
             self.assertEqual(result['plan'], 'plus')
             self.assertEqual(result['five_hour'], 80)
             self.assertEqual(result['weekly'], 40)
+            self.assertEqual(result['five_hour_resets_at'], 1792734827)

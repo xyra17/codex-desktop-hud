@@ -64,6 +64,9 @@ def classify_limits(data: Any) -> dict:
                 continue
             if 270 <= duration <= 330 and out['five_hour'] is None:
                 out['five_hour'] = left
+                reset = number(win.get('resetsAt', win.get('resets_at')))
+                if reset is not None and 0 < reset < 253402300800:
+                    out['five_hour_resets_at'] = int(reset)
             elif 9800 <= duration <= 10400 and out['weekly'] is None:
                 out['weekly'] = left
     return out
@@ -167,7 +170,7 @@ def parse_session(path: Path, use_cache: bool = False) -> dict:
     if use_cache:
         try:
             previous = json.loads(METRICS_CACHE.read_text('utf-8'))
-            if (previous.get('path') == str(path) and
+            if (previous.get('schema') == 2 and previous.get('path') == str(path) and
                 previous.get('identity') == [st.st_dev, st.st_ino] and
                 isinstance(previous.get('offset'), int) and
                 0 <= previous['offset'] <= st.st_size):
@@ -288,7 +291,7 @@ def parse_session(path: Path, use_cache: bool = False) -> dict:
                  'window': window, 'last_context_tokens': last_context_tokens,
                  'latest_limits': latest_limits, 'latest_limits_timestamp': latest_limits_timestamp,
                  'context_source': context_source}
-        entry = {'path': str(path), 'identity': [st.st_dev, st.st_ino],
+        entry = {'schema': 2, 'path': str(path), 'identity': [st.st_dev, st.st_ino],
                  'size': st.st_size, 'mtime_ns': st.st_mtime_ns,
                  'offset': end_offset, 'state': state, 'metrics': metrics}
         try:
@@ -345,7 +348,7 @@ def appserver_quota(binary: str, timeout: float = 12.0) -> dict:
     try:
         deadline = time.monotonic() + timeout
         send({'id': 1, 'method': 'initialize', 'params': {
-            'clientInfo': {'name': 'codex_desktop_hud', 'title': 'Codex Desktop HUD', 'version': '0.3.0'}}})
+            'clientInfo': {'name': 'codex_desktop_hud', 'title': 'Codex Desktop HUD', 'version': '0.3.2'}}})
         init = receive(deadline, {1}).get(1)
         if not init or 'error' in init:
             raise RuntimeError('app-server initialize failed')
@@ -432,7 +435,8 @@ def snapshot(thread_id: str | None = None, title: str | None = None) -> dict:
     age = time.time() - (number(quota.get('fetched_at')) or 0)
     # Live API data is authoritative for quota and plan, even if the session is old.
     if quota.get('ok') and 0 <= age < 600:
-        limits = {'five_hour': quota.get('five_hour'), 'weekly': quota.get('weekly')}
+        limits = {'five_hour': quota.get('five_hour'), 'weekly': quota.get('weekly'),
+                  'five_hour_resets_at': quota.get('five_hour_resets_at')}
         quota_source = 'app-server'
         plan = quota.get('plan')
     else:
@@ -446,6 +450,7 @@ def snapshot(thread_id: str | None = None, title: str | None = None) -> dict:
         plan = None
     return {'source': kind, 'plan': plan,
             'five_hour': limits.get('five_hour'), 'weekly': limits.get('weekly'),
+            'five_hour_resets_at': limits.get('five_hour_resets_at'),
             'quota_source': quota_source,
             'turns': data.get('turns'), 'steps': data.get('steps'),
             'context_percent': data.get('context_percent'),

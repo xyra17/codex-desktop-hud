@@ -6,14 +6,16 @@ import CoreGraphics
         for host in [CGRect(x: 0, y: 0, width: 1440, height: 900),
                      CGRect(x: -1800, y: -500, width: 800, height: 600),
                      CGRect(x: 200, y: 300, width: 430, height: 270)] {
-            for width: CGFloat in [410, 760] {
-                for origin in [CGPoint(x: -99999, y: -99999), CGPoint(x: 99999, y: 99999)] {
-                    let initial = HUDGeometry.frame(host: host, width: width, height: 96, position: nil)
-                    let pos = HUDGeometry.position(origin: origin, host: host, size: initial.size)
-                    let clamped = HUDGeometry.frame(host: host, width: width, height: 96, position: pos)
-                    precondition(host.contains(clamped), "Drag must remain inside host")
-                    let roundTrip = HUDGeometry.position(origin: clamped.origin, host: host, size: clamped.size)
-                    precondition(abs(roundTrip.x - pos.x) < 0.001 && abs(roundTrip.y - pos.y) < 0.001)
+            for height: CGFloat in [36, 50, 96, 110] {
+                for width: CGFloat in [410, 526] {
+                    for origin in [CGPoint(x: -99999, y: -99999), CGPoint(x: 99999, y: 99999)] {
+                        let initial = HUDGeometry.frame(host: host, width: width, height: height, position: nil)
+                        let pos = HUDGeometry.position(origin: origin, host: host, size: initial.size)
+                        let clamped = HUDGeometry.frame(host: host, width: width, height: height, position: pos)
+                        precondition(host.contains(clamped), "Drag must remain inside host")
+                        let roundTrip = HUDGeometry.position(origin: clamped.origin, host: host, size: clamped.size)
+                        precondition(abs(roundTrip.x - pos.x) < 0.001 && abs(roundTrip.y - pos.y) < 0.001)
+                    }
                 }
             }
             let defaultFrame = HUDGeometry.frame(host: host, width: 350, height: 96, position: nil)

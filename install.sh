@@ -18,7 +18,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 BUILD_DIR=$(mktemp -d "${TMPDIR:-/tmp}/codex-hud-build.XXXXXX")
 trap 'rm -rf "$BUILD_DIR"' EXIT
 printf '%s\n' '编译 macOS 原生 Codex HUD…'
-swiftc -O -framework AppKit -framework CoreGraphics "$ROOT/Sources/CodexHUD.swift" "$ROOT/Sources/HUDGeometry.swift" -o "$BUILD_DIR/CodexHUD"
+swiftc -O -framework AppKit -framework CoreGraphics "$ROOT/Sources/CodexHUD.swift" "$ROOT/Sources/HUDGeometry.swift" "$ROOT/Sources/HUDTime.swift" -o "$BUILD_DIR/CodexHUD"
 mv "$BUILD_DIR/CodexHUD" "$APP/Contents/MacOS/CodexHUD"
 cp "$ROOT/Sources/tracker.py" "$APP/Contents/Resources/tracker.py"
 command -v python3 > "$APP/Contents/Resources/python-path"
